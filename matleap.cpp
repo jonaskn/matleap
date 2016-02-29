@@ -48,13 +48,43 @@ int get_command (int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
                 mexErrMsgTxt ("Wrong number of outputs specified");
         }
         break;
-        case 1:
+        case 1://frame_grab
         {
             // frame grab command only requires one input
             if (nrhs > 1)
                 mexErrMsgTxt ("Too many inputs specified");
             // frame grab command requires exactly one output
             if (nlhs != 0 && nlhs != 1)
+                mexErrMsgTxt ("Wrong number of outputs specified");
+        }
+        break;
+        case 2://frames_grab
+        {
+            // frames grab command only requires one input
+            if (nrhs > 1)
+                mexErrMsgTxt ("Too many inputs specified");
+            // frames grab command requires exactly one output
+            if (nlhs != 0 && nlhs != 1)
+                mexErrMsgTxt ("Wrong number of outputs specified");
+        }
+        break;
+        case 3://start_listening
+        {
+            // start_listening command only requires one input
+            if (nrhs > 1)
+                mexErrMsgTxt ("Too many inputs specified");
+            // start_listening command requires exactly no output
+            if (nlhs != 0)
+                mexErrMsgTxt ("Wrong number of outputs specified");
+        }
+        break;
+        case 4://stop_listening
+        {
+            // stop_listening command only requires one input
+            if (nrhs > 1)
+                mexErrMsgTxt ("Too many inputs specified");
+            // stop_listening command requires exactly no output
+            if (nlhs != 0)
                 mexErrMsgTxt ("Wrong number of outputs specified");
         }
         break;
@@ -82,72 +112,116 @@ mxArray *create_and_fill (const Leap::Vector &v)
 ///
 /// @param nlhs matlab mex output interface
 /// @param plhs[] matlab mex output interface
-void get_frame (int nlhs, mxArray *plhs[])
+void get_frame (int nlhs, mxArray *plhs[], std::queue<matleap::frame> *frames )
 {
-    // get the frame
-    const matleap::frame &f = fg.get_frame ();
     // create matlab frame struct
     const char *frame_field_names[] =
     {
         "id",
         "timestamp",
+        "getsecs",
         "pointables"
     };
     int frame_fields = sizeof (frame_field_names) / sizeof (*frame_field_names);
-    plhs[0] = mxCreateStructMatrix (1, 1, frame_fields, frame_field_names);
-    // fill the frame struct
-    mxSetFieldByNumber (plhs[0], 0, 0, mxCreateDoubleScalar (f.id));
-    mxSetFieldByNumber (plhs[0], 0, 1, mxCreateDoubleScalar (f.timestamp));
-    // create the pointables structs
-    if (f.pointables.count () > 0)
+    const char *pointable_field_names[] =
     {
-        const char *pointable_field_names[] =
+        "id",
+        "position",
+        "velocity",
+        "direction"
+    };
+    int pointable_fields = sizeof (pointable_field_names) / sizeof (*pointable_field_names);
+    
+    //     const matleap::frame &f = fg.get_frame ();
+    
+    plhs[0] = mxCreateStructMatrix (1, frames->size(), frame_fields, frame_field_names);
+    int j=0;
+    matleap::frame f;
+    while(!frames->empty()){
+        f=frames->front();
+        frames->pop();
+        
+        // fill the frame struct
+        mxSetFieldByNumber (plhs[0], j, 0, mxCreateDoubleScalar (f.id));
+        mxSetFieldByNumber (plhs[0], j, 1, mxCreateDoubleScalar (f.timestamp));
+        mxSetFieldByNumber (plhs[0], j, 2, mxCreateDoubleScalar (f.getsecs));
+
+            // create the pointables structs
+        if (f.pointables.count () > 0)
         {
-            "id",
-            "position",
-            "velocity",
-            "direction"
-        };
-        int pointable_fields = sizeof (pointable_field_names) / sizeof (*pointable_field_names);
-        mxArray *p = mxCreateStructMatrix (1, f.pointables.count (), pointable_fields, pointable_field_names);
-        mxSetFieldByNumber (plhs[0], 0, 2, p);
-        // fill the pointables structs
-        for (size_t i = 0; i < f.pointables.count (); ++i)
-        {
-            // set the id
-            mxSetFieldByNumber (p, i, 0, mxCreateDoubleScalar (f.pointables[i].id ()));
-            // create and fill arrays for vectors
-            mxArray *pos = create_and_fill (f.pointables[i].tipPosition ());
-            mxArray *vel = create_and_fill (f.pointables[i].tipVelocity ());
-            mxArray *dir = create_and_fill (f.pointables[i].direction ());
-            // set them in the struct
-            mxSetFieldByNumber (p, i, 1, pos);
-            mxSetFieldByNumber (p, i, 2, vel);
-            mxSetFieldByNumber (p, i, 3, dir);
+    //         const char *pointable_field_names[] =
+    //         {
+    //             "id",
+    //             "position",
+    //             "velocity",
+    //             "direction"
+    //         };
+            
+            mxArray *p = mxCreateStructMatrix (1, f.pointables.count(), pointable_fields, pointable_field_names);
+            mxSetFieldByNumber (plhs[0], j, 3, p);
+            // fill the pointables structs
+            for (size_t i = 0; i < f.pointables.count (); ++i)
+            {
+                // set the id
+                mxSetFieldByNumber (p, i, 0, mxCreateDoubleScalar (f.pointables[i].id ()));
+                // create and fill arrays for vectors
+                mxArray *pos = create_and_fill (f.pointables[i].tipPosition ());
+                mxArray *vel = create_and_fill (f.pointables[i].tipVelocity ());
+                mxArray *dir = create_and_fill (f.pointables[i].direction ());
+                // set them in the struct
+                mxSetFieldByNumber (p, i, 1, pos);
+                mxSetFieldByNumber (p, i, 2, vel);
+                mxSetFieldByNumber (p, i, 3, dir);
+            }
         }
+        
+        j++;
     }
+   
+    
 }
 
 void mexFunction (int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
+    std::queue<matleap::frame> frames;
+    matleap::frame f;
     switch (get_command (nlhs, plhs, nrhs, prhs))
     {
         // turn on debug
         case -1:
-        fg.set_debug (true);
-        return;
+            fg.set_debug (true);
+            return;
         // get version
         case 0:
-        plhs[0] = mxCreateNumericMatrix (1, 2, mxDOUBLE_CLASS, 0);
-        *(mxGetPr (plhs[0]) + 0) = MAJOR_REVISION;
-        *(mxGetPr (plhs[0]) + 1) = MINOR_REVISION;
-        return;
+            plhs[0] = mxCreateNumericMatrix (1, 2, mxDOUBLE_CLASS, mxREAL);
+            *(mxGetPr (plhs[0]) + 0) = MAJOR_REVISION;
+            *(mxGetPr (plhs[0]) + 1) = MINOR_REVISION;
+            return;
         // get frame
         case 1:
-        get_frame (nlhs, plhs);
-        return;
-        default:
+            f = fg.get_latest_frame ();
+            frames.push(f);
+            get_frame (nlhs, plhs, &frames);
+            return;
+        // get frame
+        case 2:
+            f = fg.get_frames ();
+            while(f.id!=-1){
+                frames.push(f);
+                f = fg.get_frames ();
+            }
+            get_frame (nlhs, plhs, &frames);
+            return;
+        //start listening
+        case 3:
+            fg.start_listening();
+            return;
+        //stop listening
+        case 4:
+            fg.stop_listening();
+            return;
         // this is a logic error
-        mexErrMsgTxt ("unknown error: please contact developer");
+        default:
+            mexErrMsgTxt ("unknown error: please contact developer");
     }
 }

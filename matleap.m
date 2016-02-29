@@ -8,7 +8,10 @@
 % FUNCTIONS
 % ---------
 % v=matleap(0)      Get the version number
-% f=matleap(1)      Get a frame from the leap motion controller
+% f=matleap(1)      Get the latest frame from the leap motion controller
+% f=matleap(2)      Get all collected frames since last function call
+% f=matleap(3)      start collecting samples from leap motion controller
+% f=matleap(4)      stop collecting samples from leap motion controller
 %
 % HISTORY
 % -------
