@@ -13,7 +13,7 @@ function test_matleap(print_frames)
     % set debug on
     %matleap_debug
     % show version
-    [version]=matleap_version;
+    [version]=matleap.version;
     fprintf('matleap version %d.%d\n',version(1),version(2));
     % pause to let the hardware wake up
     sleep(1);
@@ -26,7 +26,7 @@ function test_matleap(print_frames)
     tic
     while(toc<1)
         % get a frame
-        f=matleap_frame;
+        f=matleap.frame;
         % only count it if it has a different id
         if f.id~=frame_id
             frames=frames+1;
@@ -47,10 +47,10 @@ function test_matleap(print_frames)
     
     % listen to frames
     fprintf('\nTesting listening to frames\n');
-    matleap(3);
+    matleap.start_listening();
     tic
     sleep(1);
-    flist=matleap(2);
+    flist=matleap.frames();
     s=toc;
     frames=length(flist);
     if print_frames
@@ -67,7 +67,7 @@ function test_matleap(print_frames)
     frame_id=-1;
     frames=0;
     fprintf('\nTesting active retieval of frames while listening\n');
-    flist=repmat(matleap_frame, 300, 1);
+    flist=repmat(matleap.frame, 300, 1);
     tic
     while(toc<1)
         % get a frame
@@ -91,7 +91,7 @@ function test_matleap(print_frames)
     fprintf('\t%f fps\n',frames/s);
     
 
-    matleap(4);
+    matleap.stop_listening();
 end
 
 % sleep for t seconds

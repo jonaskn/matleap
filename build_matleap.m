@@ -7,28 +7,49 @@ if exist('LeapSDK','dir')~=7
     error('The "LeapSDK" folder cannot be found.  A link with this name should point to the directory that contains the SDK.');
 end
 
-PTBBasefolder='~/Documents/Psychtoolbox-3';
-usePTBGetSecs=input('Use Psychtoolbox GetSecs for timestamps? [false]/true\n');
-if isempty(usePTBGetSecs)
-    usePTBGetSecs = false;
+oldpath=cd;
+path=mfilename('fullpath');
+path=path(1:end-length(mfilename()-1));
+cd(path);
+cd +matleap
+
+if ~exist('PTB_settings.m','file')
+    usePTBGetSecs=input('Use Psychtoolbox GetSecs for timestamps? [false]/true\n');
+    if isempty(usePTBGetSecs)
+        usePTBGetSecs = false;
+    end
+    if usePTBGetSecs
+        PTBBasefolder=input('please specify the path to a full Psychtoolbox copy\n','s');
+    else
+        PTBBasefolder=[];
+    end
+	f=fopen('PTB_settings.m','w');
+    fprintf(f,'function [usePTBGetSecs PTBBasefolder]=PTB_settings()\n usePTBGetSecs=%i;\nPTBBasefolder=\''%s\''\n',usePTBGetSecs,PTBBasefolder);
+    fclose(f);
+    
+    fprintf('Saved settings to +matleap.PTB_settings')
 end
 
+cd(path)
+[usePTBGetSecs, PTBBasefolder]=matleap.PTB_settings();
+cd +matleap
+
 if ismac
-    libdir='-L./LeapSDK/lib';
+    libdir='-L../LeapSDK/lib';
     PTBOSName='OSX';
 elseif strfind(computer,'PCWIN') 
     PTBOSName='Windows';
 	if isempty(strfind('64',mexext))
-        libdir='-L.\LeapSDK\lib\x86';
+        libdir='-L..\LeapSDK\lib\x86';
 	else
-        libdir='-L.\LeapSDK\lib\x64';
+        libdir='-L..\LeapSDK\lib\x64';
 	end
 elseif strcmp(computer,'GLNX86') || strcmp(computer,'GLNXA64')
     PTBOSName='Linux';
     if isempty(strfind('64',mexext))
-        libdir='-L./LeapSDK/lib/x86';
+        libdir='-L../LeapSDK/lib/x86';
     else
-        libdir='-L./LeapSDK/lib/x64';
+        libdir='-L../LeapSDK/lib/x64';
     end
 else
     error('Unknown operating system');
@@ -39,7 +60,7 @@ clear arg;
 j=1;
 arg{j}='matleap.cpp';
 j=j+1;
-arg{j}='-ILeapSDK/include';
+arg{j}='-I../LeapSDK/include';
 j=j+1;
 arg{j}='-Imatleap.h';
 j=j+1;
@@ -74,3 +95,5 @@ fprintf('\n');
 mex(arg{:})
 
 fprintf('done\n');
+
+cd(oldpath)
