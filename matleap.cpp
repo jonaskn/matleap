@@ -6,8 +6,24 @@
 
 #include "matleap.h"
 
-// Global instance
-matleap::frame_grabber fg;
+// Under Windows, a Leap::Controller must be allocated after the MEX
+// startup code has completed.  Also, a Leap::Controller must be
+// deleted in the function specified by mexAtExit after all global
+// destructors are called.  If the Leap::Controller is not allocated
+// and freed in this way, the MEX function will crash and cause MATLAB
+// to hang or close abruptly.  Linux and OS/X don't have these
+// constraints, and you can just create a global Leap::Controller
+// instance.
+
+// Global instance pointer
+matleap::frame_grabber *fg = 0;
+
+// Exit function
+void matleap_exit ()
+{
+    delete fg;
+    fg = 0;
+}
 
 /// @brief process interface arguments
 ///
@@ -107,13 +123,21 @@ mxArray *create_and_fill (const Leap::Vector &v)
     *(mxGetPr (p) + 2) = v.z;
     return p;
 }
-
 /// @brief get a frame from the leap controller
 ///
 /// @param nlhs matlab mex output interface
 /// @param plhs[] matlab mex output interface
-void get_frame (int nlhs, mxArray *plhs[], std::queue<matleap::frame> *frames )
+void get_frame (int nlhs, mxArray *plhs[], bool latestOnly)
 {
+    matleap::frame f;
+    std::queue<matleap::frame> frames;
+	if(latestOnly){
+        f = fg->get_latest_frame ();
+        frames.push(f);
+    }else{
+        frames = fg->get_frames ();
+    }
+    
     // create matlab frame struct
     const char *frame_field_names[] =
     {
@@ -123,23 +147,29 @@ void get_frame (int nlhs, mxArray *plhs[], std::queue<matleap::frame> *frames )
         "pointables"
     };
     int frame_fields = sizeof (frame_field_names) / sizeof (*frame_field_names);
-    const char *pointable_field_names[] =
-    {
+	const char *pointable_field_names[] =
+	{
         "id",
         "position",
         "velocity",
-        "direction"
-    };
+        "direction",
+        "is_extended",
+        "is_finger",
+        "is_tool",
+        "is_valid",
+        "length",
+        "width",
+        "touch_distance",
+        "time_visible"
+	};
     int pointable_fields = sizeof (pointable_field_names) / sizeof (*pointable_field_names);
-    
-    //     const matleap::frame &f = fg.get_frame ();
-    
-    plhs[0] = mxCreateStructMatrix (1, frames->size(), frame_fields, frame_field_names);
+   
+    plhs[0] = mxCreateStructMatrix (1, frames.size(), frame_fields, frame_field_names);
     int j=0;
-    matleap::frame f;
-    while(!frames->empty()){
-        f=frames->front();
-        frames->pop();
+
+    while(!frames.empty()){
+        f=frames.front();
+        frames.pop();
         
         // fill the frame struct
         mxSetFieldByNumber (plhs[0], j, 0, mxCreateDoubleScalar (f.id));
@@ -148,15 +178,7 @@ void get_frame (int nlhs, mxArray *plhs[], std::queue<matleap::frame> *frames )
 
             // create the pointables structs
         if (f.pointables.count () > 0)
-        {
-    //         const char *pointable_field_names[] =
-    //         {
-    //             "id",
-    //             "position",
-    //             "velocity",
-    //             "direction"
-    //         };
-            
+        {   
             mxArray *p = mxCreateStructMatrix (1, f.pointables.count(), pointable_fields, pointable_field_names);
             mxSetFieldByNumber (plhs[0], j, 3, p);
             // fill the pointables structs
@@ -169,56 +191,62 @@ void get_frame (int nlhs, mxArray *plhs[], std::queue<matleap::frame> *frames )
                 mxArray *vel = create_and_fill (f.pointables[i].tipVelocity ());
                 mxArray *dir = create_and_fill (f.pointables[i].direction ());
                 // set them in the struct
+                // set them in the struct
                 mxSetFieldByNumber (p, i, 1, pos);
                 mxSetFieldByNumber (p, i, 2, vel);
                 mxSetFieldByNumber (p, i, 3, dir);
+                mxSetFieldByNumber (p, i, 4, mxCreateDoubleScalar (f.pointables[i].isExtended ()));
+                mxSetFieldByNumber (p, i, 5, mxCreateDoubleScalar (f.pointables[i].isFinger ()));
+                mxSetFieldByNumber (p, i, 6, mxCreateDoubleScalar (f.pointables[i].isTool ()));
+                mxSetFieldByNumber (p, i, 7, mxCreateDoubleScalar (f.pointables[i].isValid ()));
+                mxSetFieldByNumber (p, i, 8, mxCreateDoubleScalar (f.pointables[i].length ()));
+                mxSetFieldByNumber (p, i, 9, mxCreateDoubleScalar (f.pointables[i].width ()));
+                mxSetFieldByNumber (p, i, 10, mxCreateDoubleScalar (f.pointables[i].touchDistance ()));
+                mxSetFieldByNumber (p, i, 11, mxCreateDoubleScalar (f.pointables[i].timeVisible ()));
             }
         }
         
         j++;
     }
-   
-    
 }
 
 void mexFunction (int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
-    std::queue<matleap::frame> frames;
-    matleap::frame f;
+    if (!fg)
+    {
+        fg = new matleap::frame_grabber;
+        if (fg == 0)
+            mexErrMsgTxt ("Cannot allocate a frame grabber");
+        mexAtExit (matleap_exit);
+    }
+   
     switch (get_command (nlhs, plhs, nrhs, prhs))
     {
         // turn on debug
         case -1:
-            fg.set_debug (true);
-            return;
+        fg->set_debug (true);
+        return;
         // get version
         case 0:
-            plhs[0] = mxCreateNumericMatrix (1, 2, mxDOUBLE_CLASS, mxREAL);
-            *(mxGetPr (plhs[0]) + 0) = MAJOR_REVISION;
-            *(mxGetPr (plhs[0]) + 1) = MINOR_REVISION;
-            return;
+        plhs[0] = mxCreateNumericMatrix (1, 2, mxDOUBLE_CLASS, mxREAL);
+        *(mxGetPr (plhs[0]) + 0) = MAJOR_REVISION;
+        *(mxGetPr (plhs[0]) + 1) = MINOR_REVISION;
+        return;
         // get frame
         case 1:
-            f = fg.get_latest_frame ();
-            frames.push(f);
-            get_frame (nlhs, plhs, &frames);
+            get_frame(nlhs, plhs, 1);
             return;
-        // get frame
+        // get frames collected by listening to a Leap callback
         case 2:
-            f = fg.get_frames ();
-            while(f.id!=-1){
-                frames.push(f);
-                f = fg.get_frames ();
-            }
-            get_frame (nlhs, plhs, &frames);
+            get_frame(nlhs, plhs, 0);
             return;
-        //start listening
+        //start listening to a Leap callback
         case 3:
-            fg.start_listening();
+            fg->start_listening();
             return;
-        //stop listening
+        //stop listening to a Leap callback
         case 4:
-            fg.stop_listening();
+            fg->stop_listening();
             return;
         // this is a logic error
         default:

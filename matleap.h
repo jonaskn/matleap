@@ -8,18 +8,24 @@
 #define MATLEAP_H
 
 #define MAJOR_REVISION 0
-#define MINOR_REVISION 2
+#define MINOR_REVISION 7
 
 #include "Leap.h"
 #include "mex.h"
 #include <queue>
 
-#include "GetSecs.h"
-
-#if PSYCH_SYSTEM != PSYCH_WINDOWS
-#include <sys/time.h>
+#ifndef PTBGetSecs
+    #define PTBGetSecs false
 #endif
+#if PTBGetSecs
+    #include "GetSecs.h"
 
+    #if PSYCH_SYSTEM != PSYCH_WINDOWS
+        #include <sys/time.h>
+    #endif
+#else
+    #include <chrono>
+#endif
 
 
 namespace matleap
@@ -34,45 +40,114 @@ struct frame
     Leap::PointableList pointables;
 };
 
-class frame_listener:  public Leap::Listener
+/// @brief leap frame grabber interface
+class frame_grabber:  public Leap::Listener
 {
     private:
+    bool debug;
+    bool listening;
     std::queue<frame> frames;
     std::mutex frames_mutex;
     frame latest_frame;
     std::mutex latest_frame_mutex;
     int maxNframes;
     int64_t lastsampleId=-1;
-//     bool listening;
-    
+    #if !PTBGetSecs
+        std::chrono::high_resolution_clock timer;
+    #endif
+        
+    private:
+	/// @brief internal function to get high precision timestamps
+	///
+	/// @return a current timestamp
+    double getsecs(){
+    #if PTBGetSecs
+        double t;
+        PsychGetAdjustedPrecisionTimerSeconds(&t);
+        return t;
+    #else
+        auto time = std::chrono::high_resolution_clock::now().time_since_epoch();
+        return (std::chrono::duration_cast<std::chrono::microseconds>(time)).count() *1000000;
+    #endif
+    }    
+        
     public:
-    Leap::Controller controller;
-    
-    frame_listener()
-        :maxNframes(1000000)
-//          listening(false)
+    Leap::Controller pcontroller;
+        
+	public:
+    /// @brief constructor
+    frame_grabber ()
+        : debug (false),
+          maxNframes(1000000),
+          listening(false)
     {
         latest_frame.id = -1;
         latest_frame.timestamp = -1;
-        PsychInitTimeGlue();
+        #if PTBGetSecs
+            PsychInitTimeGlue();
+        #endif
         // receive frames even when you don't have focus
-        controller.setPolicyFlags (Leap::Controller::POLICY_BACKGROUND_FRAMES);
-
+        pcontroller.setPolicyFlags (Leap::Controller::POLICY_BACKGROUND_FRAMES);
     }
         
+	/// @brief start listening to frames sent from the Leap controller
+    void start_listening(){
+        if(!listening){
+            pcontroller.addListener(*this);
+        }
+        listening=true;
+    }
+    
+    /// @brief stop listening to frames sent from the Leap controller
+    void stop_listening(){
+        if(listening){
+            pcontroller.removeListener(*this);
+        }
+        while(!frames.empty()) {
+            frames.pop();
+        }
+        listening=false;
+        latest_frame.id = -1;
+        latest_frame.timestamp = -1;
+    }
+    
+    /// @brief check if listening to frames sent from the Leap controller
+	///
+	/// @return listening status
+    bool isListening(){
+        return listening;
+    }
+    
+    /// @brief destructor
+    ~frame_grabber ()
+    {
+        if (debug)
+            mexPrintf ("Closing matleap frame grabber\n");
+        
+        stop_listening();
+    }
+    
+    /// @brief debug member access
+    ///
+    /// @param flag turn it on/off
+    void set_debug (bool flag)
+    {
+        if (flag == debug)
+            return;
+        if (flag)
+            mexPrintf ("Setting debug on\n");
+        debug = flag;
+    }
+
     /// @brief callback function for the Leap:listener class
     ///
     /// @param a Leap controller
     virtual void onFrame(const Leap::Controller& controller) { 
-        //if (debug){
-        //    std::cout << "New frame available" << std::endl;
-        //}
+        if (debug){
+            mexPrintf("received a new frame\n");
+        }
         matleap::frame current_frame;
-//         double gs;
-//         double* gsp=&gs;
-        PsychGetAdjustedPrecisionTimerSeconds(&(current_frame.getsecs));
-//         current_frame.getsecs=gs;
-        
+        current_frame.getsecs = getsecs();       
         Leap::Frame f = controller.frame();
                
         current_frame.id = f.id ();
@@ -111,27 +186,31 @@ class frame_listener:  public Leap::Listener
         latest_frame_mutex.unlock();
     }
     
-    matleap::frame get_frames() {
-        matleap::frame f;
+    /// @brief get a queue of all frames since last call
+	///
+	/// @return queue of frames (std::queue<frame>)
+    std::queue<frame> get_frames() {
+        std::queue<frame> ret_frames;
+        
         frames_mutex.lock();
-        if(!frames.empty()){
-            f = frames.front();
-            frames.pop();
-        }else{
-            f.id=-1;
-            f.timestamp=-1;
-        }
+            while(!frames.empty()){
+                ret_frames.push(frames.front());
+                frames.pop();
+            }
         frames_mutex.unlock();
         
-        return f;
+        return ret_frames;
     }
     
+    /// @brief get the latest frame from the controller
+	///
+	/// @return the frame
     matleap::frame get_latest_frame () {
         frame rf;
         latest_frame_mutex.lock();
-            if(latest_frame.id==-1) {//no sample collected yet
-                Leap::Frame f = controller.frame();
-                PsychGetAdjustedPrecisionTimerSeconds(&(rf.getsecs));
+            if(!listening || latest_frame.id==-1) {//no sample collected yet
+                Leap::Frame f = pcontroller.frame();
+                rf.getsecs = getsecs();
                 rf.id = f.id ();
                 rf.timestamp = f.timestamp ();
                 rf.pointables = f.pointables ();
@@ -140,119 +219,6 @@ class frame_listener:  public Leap::Listener
             rf=latest_frame;
         latest_frame_mutex.unlock();
         return rf;
-    }
-    
-//      void start_listening(){
-//         if(!listening){
-//             controller.addListener(this);
-//         }
-//         listening=true;
-//     }
-//     
-//     void stop_listening(){
-//         if(listening){
-//             controller.removeListener(this);
-//             
-//             //flush the queue
-//             frames_mutex.lock();
-//             while(!frames.empty()){
-//             	frames.pop();
-//             }
-//             frames_mutex.unlock();
-//         }
-//         listening=false;
-//     }
-//     
-//     bool isListening(){
-//         return listener.isListening();
-//     }
-};
-
-/// @brief leap frame grabber interface
-class frame_grabber
-{
-    private:
-    bool debug;
-//     Leap::Controller controller;
-    matleap::frame_listener listener;
-    bool listening;
-    
-	public:
-    /// @brief constructor
-    frame_grabber ()
-        : debug (false),
-          listening(false)
-    {
-//         // receive frames even when you don't have focus
-//         controller.setPolicyFlags (Leap::Controller::POLICY_BACKGROUND_FRAMES);
-    }
-        
-    void start_listening(){
-        if(!listening){
-            listener.controller.addListener(listener);
-        }
-        listening=true;
-//         listener.start_listening()
-    }
-    
-    void stop_listening(){
-        if(listening){
-            listener.controller.removeListener(listener);
-            
-            //flush the queue
-            frame f;
-            do{
-                f= get_frames();
-            }while(f.id!=-1);
-            
-        }
-        listening=false;
-//         listener.stop_listening()
-    }
-    
-    bool isListening(){
-        return listening;
-    }
-    
-    /// @brief destructor
-    ~frame_grabber ()
-    {
-        if (debug)
-            mexPrintf ("Closing matleap frame grabber\n");
-        
-        stop_listening();
-    }
-    /// @brief debug member access
-    ///
-    /// @param flag turn it on/off
-    void set_debug (bool flag)
-    {
-        if (flag)
-            mexPrintf ("Setting debug on\n");
-        debug = flag;
-    }
-//     /// @brief get a frame from the controller
-//     ///
-//     /// @return the frame
-//     const frame &get_frame ()
-//     {
-//         const Leap::Frame &f = controller.frame ();
-//         current_frame.id = f.id ();
-//         if (debug)
-//             mexPrintf ("Got frame with id %d\n", current_frame.id);
-//         current_frame.timestamp = f.timestamp ();
-//         current_frame.pointables = f.pointables ();
-//         return current_frame;
-//     }
-    
-    frame get_frames ()
-    {
-        return listener.get_frames();
-    }
-    
-    frame get_latest_frame ()
-    {
-       return listener.get_latest_frame();
     }
 };
 
