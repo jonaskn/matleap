@@ -7,7 +7,7 @@ if exist('LeapSDK','dir')~=7
     error('The "LeapSDK" folder cannot be found.  A link with this name should point to the directory that contains the SDK.');
 end
 
-PTBBasefolder='/Users/jonas/Documents/code/resources/Psychtoolbox-3';
+PTBBasefolder='~/Documents/Psychtoolbox-3';
 usePTBGetSecs=input('Use Psychtoolbox GetSecs for timestamps? [false]/true\n');
 if isempty(usePTBGetSecs)
     usePTBGetSecs = false;
@@ -51,17 +51,17 @@ j=j+1;
 % 2. add Psychtoolbox timing if requested
 if usePTBGetSecs
     PTBBasefolder=[PTBBasefolder filesep 'PsychSourceGL' filesep 'Source'];
-    args{j}=['' PTBBasefolder filesep PTBOSName filesep 'Base' filesep 'PsychTimeGlue.c'];
+    arg{j}=['' PTBBasefolder filesep PTBOSName filesep 'Base' filesep 'PsychTimeGlue.c'];
     j=j+1;
-    args{j}='-DPTBGetSecs=true';
+    arg{j}='-DPTBGetSecs=true';
     j=j+1;
-    args{j}=['-I' PTBBasefolder filesep 'Common' filesep 'Base'];
+    arg{j}=['-I' PTBBasefolder filesep 'Common' filesep 'Base'];
     j=j+1;
-    args{j}=['-I' PTBBasefolder filesep PTBOSName filesep 'Base'];
+    arg{j}=['-I' PTBBasefolder filesep PTBOSName filesep 'Base'];
     j=j+1;
-    args{j}=['-I' PTBBasefolder 'Common' filesep 'GetSecs'];
+    arg{j}=['-I' PTBBasefolder filesep 'Common' filesep 'GetSecs'];
     j=j+1;
-    args{j}='LDFLAGS="\$LDFLAGS -framework CoreAudio"';
+    arg{j}='LDFLAGS="\$LDFLAGS -framework CoreAudio"';
     j=j+1;
 end
 
