@@ -24,7 +24,7 @@ if ~exist('PTB_settings.m','file')
         PTBBasefolder=[];
     end
 	f=fopen('PTB_settings.m','w');
-    fprintf(f,'function [usePTBGetSecs PTBBasefolder]=PTB_settings()\n usePTBGetSecs=%i;\nPTBBasefolder=\''%s\''\n',usePTBGetSecs,PTBBasefolder);
+    fprintf(f,'function [usePTBGetSecs, PTBBasefolder]=PTB_settings()\nusePTBGetSecs=%i;\nPTBBasefolder=\''%s\'';\n',usePTBGetSecs,PTBBasefolder);
     fclose(f);
     
     fprintf('Saved settings to +matleap.PTB_settings')
