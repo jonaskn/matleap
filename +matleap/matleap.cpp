@@ -153,7 +153,7 @@ void get_frame (int nlhs, mxArray *plhs[], bool latestOnly)
         "position",
         "velocity",
         "direction",
-        "is_extended",
+//        "is_extended",
         "is_finger",
         "is_tool",
         "is_valid",
@@ -195,7 +195,7 @@ void get_frame (int nlhs, mxArray *plhs[], bool latestOnly)
                 mxSetFieldByNumber (p, i, 1, pos);
                 mxSetFieldByNumber (p, i, 2, vel);
                 mxSetFieldByNumber (p, i, 3, dir);
-                mxSetFieldByNumber (p, i, 4, mxCreateDoubleScalar (f.pointables[i].isExtended ()));
+                //mxSetFieldByNumber (p, i, 4, mxCreateDoubleScalar (f.pointables[i].isExtended ()));
                 mxSetFieldByNumber (p, i, 5, mxCreateDoubleScalar (f.pointables[i].isFinger ()));
                 mxSetFieldByNumber (p, i, 6, mxCreateDoubleScalar (f.pointables[i].isTool ()));
                 mxSetFieldByNumber (p, i, 7, mxCreateDoubleScalar (f.pointables[i].isValid ()));
